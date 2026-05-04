@@ -280,6 +280,18 @@ public:
     bool askChangeVideoMode();
     void setAskChangeVideoMode(bool b);
 
+    // agent server (WebSocket control surface for external AI agents)
+    bool agentServerEnabled() const;
+    void setAgentServerEnabled(bool b);
+    int agentServerPort() const;
+    void setAgentServerPort(int port);
+    QString agentServerBind() const;
+    void setAgentServerBind(const QString &address);
+    QString agentServerToken() const;
+    void setAgentServerToken(const QString &token);
+    bool agentServerAllowRemote() const;
+    void setAgentServerAllowRemote(bool b);
+
     void sync();
     QString appDataLocation() const;
     static void setAppDataForSession(const QString &location);

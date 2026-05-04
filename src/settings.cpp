@@ -1251,6 +1251,56 @@ void ShotcutSettings::setAskChangeVideoMode(bool b)
     settings.setValue("askChangeVideoMode", b);
 }
 
+bool ShotcutSettings::agentServerEnabled() const
+{
+    return settings.value("agent/enabled", false).toBool();
+}
+
+void ShotcutSettings::setAgentServerEnabled(bool b)
+{
+    settings.setValue("agent/enabled", b);
+}
+
+int ShotcutSettings::agentServerPort() const
+{
+    return settings.value("agent/port", 5555).toInt();
+}
+
+void ShotcutSettings::setAgentServerPort(int port)
+{
+    settings.setValue("agent/port", port);
+}
+
+QString ShotcutSettings::agentServerBind() const
+{
+    return settings.value("agent/bind", "127.0.0.1").toString();
+}
+
+void ShotcutSettings::setAgentServerBind(const QString &address)
+{
+    settings.setValue("agent/bind", address);
+}
+
+QString ShotcutSettings::agentServerToken() const
+{
+    return settings.value("agent/token", QString()).toString();
+}
+
+void ShotcutSettings::setAgentServerToken(const QString &token)
+{
+    settings.setValue("agent/token", token);
+}
+
+bool ShotcutSettings::agentServerAllowRemote() const
+{
+    return settings.value("agent/allowRemote", false).toBool();
+}
+
+void ShotcutSettings::setAgentServerAllowRemote(bool b)
+{
+    settings.setValue("agent/allowRemote", b);
+}
+
 void ShotcutSettings::sync()
 {
     settings.sync();

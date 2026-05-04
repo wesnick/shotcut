@@ -301,6 +301,24 @@ endif()
 if(USE_VULKAN)
   target_compile_definitions(shotcut PRIVATE USE_VULKAN)
 endif()
+if(SHOTCUT_ENABLE_AGENT_SERVER)
+  target_sources(shotcut PRIVATE
+    agent/agentauth.cpp agent/agentauth.h
+    agent/agentdispatcher.cpp agent/agentdispatcher.h
+    agent/agentevents.cpp agent/agentevents.h
+    agent/agentmethods_agent.cpp
+    agent/agentmethods_clip.cpp
+    agent/agentmethods_export.cpp
+    agent/agentmethods_filter.cpp
+    agent/agentmethods_player.cpp
+    agent/agentmethods_project.cpp
+    agent/agentmethods_timeline.cpp
+    agent/agentserver.cpp agent/agentserver.h
+    agent/agentsession.cpp agent/agentsession.h
+    dialogs/agentsettingsdialog.cpp dialogs/agentsettingsdialog.h
+  )
+  target_compile_definitions(shotcut PRIVATE SHOTCUT_ENABLE_AGENT_SERVER)
+endif()
 
 if(WIN32)
   # Windows resource

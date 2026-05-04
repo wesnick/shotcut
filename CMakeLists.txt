@@ -23,6 +23,7 @@ endif()
 option(CLANG_FORMAT "Enable Clang Format" ON)
 option(EXTERNAL_LAUNCHERS "Whether include features to launch external programs; for example, this should be off for Flatpak due to sandbox." ON)
 option(USE_VULKAN "Whether to use Vulkan for hardware video decoding" OFF)
+option(SHOTCUT_ENABLE_AGENT_SERVER "Compile the JSON-RPC over WebSocket agent server (off by default at runtime; opt-in via Settings or --agent-server)." ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 

@@ -18,6 +18,10 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+#include "agent/agentserver.h"
+#include "dialogs/agentsettingsdialog.h"
+#endif
 #include "Logger.h"
 #include "actions.h"
 #include "autosavefile.h"
@@ -1594,6 +1598,23 @@ void MainWindow::setupSettingsMenu()
     ui->actionPreviewHardwareDecoder->setVisible(false);
 #endif
 
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+    // AI Agent settings entry — placed at the end of the Settings menu.
+    ui->menuSettings->addSeparator();
+    auto agentAction = ui->menuSettings->addAction(tr("AI Agent..."));
+    connect(agentAction, &QAction::triggered, this, [this]() {
+        AgentSettingsDialog dialog(this);
+        if (dialog.exec() == QDialog::Accepted) {
+            const bool wasRunning = m_agentServer != nullptr;
+            stopAgentServer();
+            if (Settings.agentServerEnabled())
+                startAgentServer();
+            else if (wasRunning)
+                showStatusMessage(tr("Agent server stopped"));
+        }
+    });
+#endif
+
     LOG_DEBUG() << "end";
 }
 
@@ -3061,6 +3082,7 @@ void MainWindow::newProject(const QString &filename, bool isProjectFolder)
             showStatusMessage(tr("Saved %1").arg(m_currentFile));
         m_undoStack->setClean();
         m_recentDock->add(filename);
+        emit fileSaved(filename);
     } else {
         showSaveError();
     }
@@ -3216,6 +3238,9 @@ void MainWindow::closeEvent(QCloseEvent *event)
     m_timelineDock->stopRecording();
     if (continueJobsRunning() && continueModified()) {
         LOG_DEBUG() << "begin";
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+        stopAgentServer();
+#endif
         JOBS.cleanup();
         if (m_exitCode != EXIT_RESET) {
             writeSettings();
@@ -3368,6 +3393,7 @@ bool MainWindow::on_actionSave_triggered()
         setWindowModified(false);
         if (success) {
             showStatusMessage(tr("Saved %1").arg(m_currentFile));
+            emit fileSaved(m_currentFile);
         } else {
             showSaveError();
         }
@@ -6483,3 +6509,37 @@ void MainWindow::showSettingsMenu() const
 #endif
     ui->menuSettings->popup(point, ui->menuSettings->defaultAction());
 }
+
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+void MainWindow::startAgentServer(int portOverride)
+{
+    if (m_agentServer) {
+        LOG_INFO() << "[Agent] server already running";
+        return;
+    }
+    m_agentServer = new Agent::AgentServer(this);
+    int port = portOverride > 0 ? portOverride : Settings.agentServerPort();
+    QString bind = Settings.agentServerBind();
+    if (!Settings.agentServerAllowRemote() && bind != "127.0.0.1" && bind != "::1") {
+        LOG_WARNING() << "[Agent] non-loopback bind requested without allowRemote; forcing 127.0.0.1";
+        bind = "127.0.0.1";
+    }
+    if (!m_agentServer->start(bind, port, Settings.agentServerToken())) {
+        LOG_WARNING() << "[Agent] failed to start on" << bind << port;
+        delete m_agentServer;
+        m_agentServer = nullptr;
+    } else {
+        LOG_INFO() << "[Agent] listening on" << bind << ":" << port;
+    }
+}
+
+void MainWindow::stopAgentServer()
+{
+    if (m_agentServer) {
+        LOG_INFO() << "[Agent] stopping server";
+        m_agentServer->stop();
+        delete m_agentServer;
+        m_agentServer = nullptr;
+    }
+}
+#endif // SHOTCUT_ENABLE_AGENT_SERVER

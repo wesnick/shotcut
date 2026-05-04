@@ -55,6 +55,11 @@ class MarkersDock;
 class NotesDock;
 class SubtitlesDock;
 class ScreenCapture;
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+namespace Agent {
+class AgentServer;
+}
+#endif
 
 class MainWindow : public QMainWindow
 {
@@ -73,6 +78,7 @@ public:
     static void changeTheme(const QString &theme);
     PlaylistDock *playlistDock() const { return m_playlistDock; }
     TimelineDock *timelineDock() const { return m_timelineDock; }
+    EncodeDock *encodeDock() const { return m_encodeDock; }
     FilterController *filterController() const { return m_filterController; }
     Mlt::Playlist *playlist() const;
     bool isPlaylistValid() const;
@@ -113,6 +119,11 @@ public:
     Mlt::Playlist *binPlaylist();
     void showInFiles(const QString &filePath);
     void turnOffHardwareDecoder();
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+    Agent::AgentServer *agentServer() const { return m_agentServer; }
+    void startAgentServer(int portOverride = -1);
+    void stopAgentServer();
+#endif
 
 signals:
     void audioChannelsChanged();
@@ -124,6 +135,7 @@ signals:
     void renameRequested();
     void serviceInChanged(int delta, Mlt::Service *);
     void serviceOutChanged(int delta, Mlt::Service *);
+    void fileSaved(const QString &path);
 
 protected:
     MainWindow();
@@ -223,6 +235,9 @@ private:
     std::unique_ptr<QWidget> m_producerWidget;
     FilesDock *m_filesDock;
     ScreenCapture *m_screenCapture;
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+    Agent::AgentServer *m_agentServer{nullptr};
+#endif
 
 public slots:
     bool isCompatibleWithProcessingMode(MltXmlChecker &checker, QString &fileName, bool &converted);

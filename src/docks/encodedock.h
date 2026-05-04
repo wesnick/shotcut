@@ -57,6 +57,15 @@ public:
     void loadPresetFromProperties(Mlt::Properties &);
     bool isExportInProgress() const;
 
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+    // Trigger an export to `target` using the dock's currently-loaded preset.
+    // Used by the agent server's export.start RPC. Returns true if the job
+    // was enqueued. Must be called from the GUI thread.
+    bool encodeForAgent(const QString &target);
+    // Names of stock encode preset paths (e.g. "consumer/avformat/H.264 Main Profile").
+    QStringList agentPresetNames() const;
+#endif
+
 signals:
     void captureStateChanged(bool);
     void createOrEditFilterOnOutput(Mlt::Filter *, const QStringList & = {});

@@ -3091,3 +3091,29 @@ void EncodeDock::checkFrameRate()
     else
         hideResampleWarning();
 }
+
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+bool EncodeDock::encodeForAgent(const QString &target)
+{
+    if (target.isEmpty())
+        return false;
+    if (isExportInProgress())
+        return false;
+    encode(target);
+    return true;
+}
+
+QStringList EncodeDock::agentPresetNames() const
+{
+    QStringList names;
+    if (!m_presets || !m_presets->is_valid())
+        return names;
+    static const QString prefix = QStringLiteral("consumer/avformat/");
+    for (int j = 0; j < m_presets->count(); ++j) {
+        const QString name = QString::fromUtf8(m_presets->get_name(j));
+        if (name.startsWith(prefix))
+            names.append(name);
+    }
+    return names;
+}
+#endif // SHOTCUT_ENABLE_AGENT_SERVER

@@ -112,6 +112,10 @@ public:
     QStringList resourceArg;
     bool isFullScreen;
     QString appDirArg;
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+    bool agentServerRequested{false};
+    int agentServerPort{0};
+#endif
 
     Application(int &argc, char **argv)
         : QApplication(argc, argv)
@@ -169,6 +173,16 @@ public:
                                              QCoreApplication::translate("main",
                                                                          "Clear Recent on Exit"));
         parser.addOption(clearRecentOption);
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+        QCommandLineOption agentServerOption(
+            "agent-server",
+            QCoreApplication::translate("main",
+                                        "Start the AI agent JSON-RPC over WebSocket server "
+                                        "on the given port (default 5555). Loopback only."),
+            QCoreApplication::translate("main", "port"),
+            "0");
+        parser.addOption(agentServerOption);
+#endif
         QCommandLineOption appDataOption(
             "appdata",
             QCoreApplication::translate("main", "The directory for app configuration and data."),
@@ -238,6 +252,14 @@ public:
         }
         if (parser.isSet(gpuOption))
             Settings.setProcessingMode(ShotcutSettings::Linear10GpuCpu);
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+        if (parser.isSet(agentServerOption)) {
+            agentServerRequested = true;
+            bool ok = false;
+            const int p = parser.value(agentServerOption).toInt(&ok);
+            agentServerPort = (ok && p > 0) ? p : 0;
+        }
+#endif
         if (!parser.positionalArguments().isEmpty())
             resourceArg = parser.positionalArguments();
 
@@ -478,6 +500,16 @@ int main(int argc, char **argv)
         } else {
             a.mainWindow->open(a.mainWindow->untitledFileName());
         }
+
+#ifdef SHOTCUT_ENABLE_AGENT_SERVER
+        // Start the agent server if requested via CLI or persisted in Settings.
+        // CLI takes priority; the supplied port overrides the persisted one.
+        if (a.agentServerRequested) {
+            a.mainWindow->startAgentServer(a.agentServerPort > 0 ? a.agentServerPort : -1);
+        } else if (Settings.agentServerEnabled()) {
+            a.mainWindow->startAgentServer();
+        }
+#endif
 
         result = a.exec();
 
