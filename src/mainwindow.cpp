@@ -705,6 +705,14 @@ void MainWindow::setupAndConnectDocks()
             &TimelineDock::trimEnded,
             m_filterController,
             &FilterController::resumeUndoTracking);
+    connect(&Actions, &ShotcutActions::shortcutsChanged, this, [this](const QAction *action) {
+        static const QStringList
+            actionsNeedingReload{QStringLiteral("timelineToggleTrackLockedAction"),
+                                 QStringLiteral("timelineToggleTrackMuteAction"),
+                                 QStringLiteral("timelineToggleTrackHiddenAction")};
+        if (action && actionsNeedingReload.contains(action->objectName()))
+            m_timelineDock->model()->reload();
+    });
 
     m_markersDock = new MarkersDock(this);
     m_markersDock->hide();
@@ -2785,6 +2793,86 @@ void MainWindow::setupActions()
     addAction(Actions["playlistSearch"]);
 
     Actions.initializeShortcuts();
+    mirrorViewActionShortcuts();
+}
+
+void MainWindow::mirrorViewActionShortcuts()
+{
+    QHash<const QAction *, QAction *> mirroredActions;
+
+    if (auto audioMeterDock = findChild<QDockWidget *>("AudioPeakMeterDock")) {
+        mirroredActions.insert(audioMeterDock->toggleViewAction(), ui->actionAudioMeter);
+    }
+    mirroredActions.insert(m_propertiesDock->toggleViewAction(), ui->actionProperties);
+    mirroredActions.insert(m_recentDock->toggleViewAction(), ui->actionRecent);
+    mirroredActions.insert(m_notesDock->toggleViewAction(), ui->actionNotes);
+    mirroredActions.insert(m_playlistDock->toggleViewAction(), ui->actionPlaylist);
+    mirroredActions.insert(m_filesDock->toggleViewAction(), ui->actionFiles);
+    mirroredActions.insert(m_timelineDock->toggleViewAction(), ui->actionTimeline);
+    mirroredActions.insert(m_filtersDock->toggleViewAction(), ui->actionFilters);
+    mirroredActions.insert(m_markersDock->toggleViewAction(), ui->actionMarkers);
+    mirroredActions.insert(m_keyframesDock->toggleViewAction(), ui->actionKeyframes);
+    mirroredActions.insert(m_historyDock->toggleViewAction(), ui->actionHistory);
+    mirroredActions.insert(m_encodeDock->toggleViewAction(), ui->actionEncode);
+    mirroredActions.insert(m_jobsDock->toggleViewAction(), ui->actionJobs);
+    mirroredActions.insert(m_subtitlesDock->toggleViewAction(), ui->actionSubtitles);
+
+    for (auto i = mirroredActions.cbegin(); i != mirroredActions.cend(); ++i) {
+        const QAction *sourceAction = i.key();
+        QAction *targetAction = i.value();
+        if (!sourceAction || !targetAction)
+            continue;
+
+        QVariant defaultToolTip = targetAction->property(ShotcutActions::defaultToolTipProperty);
+        if (!defaultToolTip.isValid()) {
+            defaultToolTip = targetAction->toolTip();
+            targetAction->setProperty(ShotcutActions::defaultToolTipProperty, defaultToolTip);
+        }
+
+        QString toolTip = defaultToolTip.toString();
+        QString shortcut = sourceAction->shortcut().toString(QKeySequence::NativeText);
+        if (shortcut.isEmpty())
+            shortcut = sourceAction->property(ShotcutActions::hardKeyProperty).toString();
+
+        if (!shortcut.isEmpty()) {
+            if (!toolTip.isEmpty())
+                toolTip += " ";
+            toolTip += "(" + shortcut + ")";
+        }
+        targetAction->setToolTip(toolTip);
+    }
+
+    connect(&Actions,
+            &ShotcutActions::shortcutsChanged,
+            this,
+            [mirroredActions](const QAction *action) {
+                if (!action)
+                    return;
+
+                QAction *targetAction = mirroredActions.value(action, nullptr);
+                if (!targetAction)
+                    return;
+
+                QVariant defaultToolTip = targetAction->property(
+                    ShotcutActions::defaultToolTipProperty);
+                if (!defaultToolTip.isValid()) {
+                    defaultToolTip = targetAction->toolTip();
+                    targetAction->setProperty(ShotcutActions::defaultToolTipProperty,
+                                              defaultToolTip);
+                }
+
+                QString toolTip = defaultToolTip.toString();
+                QString shortcut = action->shortcut().toString(QKeySequence::NativeText);
+                if (shortcut.isEmpty())
+                    shortcut = action->property(ShotcutActions::hardKeyProperty).toString();
+
+                if (!shortcut.isEmpty()) {
+                    if (!toolTip.isEmpty())
+                        toolTip += " ";
+                    toolTip += "(" + shortcut + ")";
+                }
+                targetAction->setToolTip(toolTip);
+            });
 }
 
 void MainWindow::writeSettings()

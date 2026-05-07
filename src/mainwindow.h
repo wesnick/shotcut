@@ -161,6 +161,7 @@ private:
     void setupSettingsMenu();
     void setupOpenOtherMenu();
     void setupActions();
+    void mirrorViewActionShortcuts();
     QAction *addProfile(QActionGroup *actionGroup, const QString &desc, const QString &name);
     QAction *addLayout(QActionGroup *actionGroup, const QString &name);
     void readPlayerSettings();

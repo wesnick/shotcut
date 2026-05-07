@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2025 Meltytech, LLC
+ * Copyright (c) 2014-2026 Meltytech, LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -190,7 +190,7 @@ Rectangle {
             }
 
             Shotcut.HoverTip {
-                text: qsTr('Add a filter')
+                text: qsTr('Add a filter') + application.actionFirstShortcut('filtersAddFilterAction')
             }
         }
 
@@ -207,7 +207,7 @@ Rectangle {
             }
 
             Shotcut.HoverTip {
-                text: qsTr('Remove selected filter')
+                text: qsTr('Remove selected filter') + application.actionFirstShortcut('filtersRemoveFilterAction')
             }
         }
 
@@ -229,7 +229,7 @@ Rectangle {
             onClicked: root.copyFilterRequested()
 
             Shotcut.HoverTip {
-                text: qsTr('Copy filters')
+                text: qsTr('Copy filters') + application.actionFirstShortcut('filtersCopyFiltersAction')
             }
         }
 
@@ -244,7 +244,7 @@ Rectangle {
             onClicked: attachedfiltersmodel.pasteFilters()
 
             Shotcut.HoverTip {
-                text: qsTr('Paste filters')
+                text: qsTr('Paste filters') + application.actionFirstShortcut('filtersPasteFiltersAction')
             }
         }
 
