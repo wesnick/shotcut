@@ -1387,21 +1387,20 @@ function get_subproject {
               # Found git repo
               debug "Found git repo, will update"
 
-              if ! git diff-index --quiet ${REVISION:-master}; then
-                  die "git repository has local changes, aborting checkout. Consider disabling ACTION_GET in your build config if you want to compile with these changes"
-              fi
-
               feedback_status "Pulling git sources for $1"
               cmd git reset --hard || die "Unable to reset git tree for $1"
-              if [ "$1" = "rubberband" ]; then
-                MAIN_GIT_BRANCH=default
-              elif [ "$1" = "bigsh0t" ] || [ "$1" = "libwebp" ]; then
-                MAIN_GIT_BRANCH=main
-              else
-                MAIN_GIT_BRANCH=master
+              cmd git clean -fdx || die "Unable to clean git tree for $1"
+              # Resolve the remote's default branch instead of guessing per-repo
+              MAIN_GIT_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
+              if [ -z "$MAIN_GIT_BRANCH" ]; then
+                git remote set-head origin -a >/dev/null 2>&1
+                MAIN_GIT_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
               fi
+              MAIN_GIT_BRANCH=${MAIN_GIT_BRANCH:-master}
               cmd git checkout $MAIN_GIT_BRANCH || die "Unable to git checkout $MAIN_GIT_BRANCH"
               cmd git --no-pager pull $REPOLOC $MAIN_GIT_BRANCH || die "Unable to git pull sources for $1"
+              # Refresh all origin/* refs so a REVISION like origin/<branch> picks up new commits
+              cmd git --no-pager fetch origin || die "Unable to git fetch from origin for $1"
               cmd git checkout $REVISION || die "Unable to git checkout $REVISION"
           else
               # A dir with the expected name, but not a git repo, bailing out
