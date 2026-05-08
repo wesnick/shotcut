@@ -19,6 +19,8 @@
 #ifndef AGENT_AGENTSERVER_H
 #define AGENT_AGENTSERVER_H
 
+#include "agentsession.h"
+
 #include <QObject>
 #include <QPointer>
 #include <QString>
@@ -27,7 +29,6 @@ class QWebSocketServer;
 
 namespace Agent {
 
-class AgentSession;
 class Dispatcher;
 class AgentEvents;
 
