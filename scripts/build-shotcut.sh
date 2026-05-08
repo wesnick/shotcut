@@ -1395,7 +1395,7 @@ function get_subproject {
               cmd git reset --hard || die "Unable to reset git tree for $1"
               if [ "$1" = "rubberband" ]; then
                 MAIN_GIT_BRANCH=default
-              elif [ "$1" = "bigsh0t" ]; then
+              elif [ "$1" = "bigsh0t" ] || [ "$1" = "libwebp" ]; then
                 MAIN_GIT_BRANCH=main
               else
                 MAIN_GIT_BRANCH=master
