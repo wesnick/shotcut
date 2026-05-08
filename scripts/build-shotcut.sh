@@ -1237,7 +1237,7 @@ function preconfig_x265 {
   cmd cmake -G Ninja -D ENABLE_CLI=OFF -D ENABLE_SHARED=OFF -D EXPORT_C_API=OFF -D HIGH_BIT_DEPTH=ON $CMAKE_DEBUG_FLAG ../source
   cmd ninja -j$MAKEJ
   cd ../source
-  cmd ln -s ../10bit/libx265.a libx265_main10.a
+  cmd ln -sf ../10bit/libx265.a libx265_main10.a
 }
 
 function install_x265 {
