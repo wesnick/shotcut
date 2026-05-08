@@ -87,8 +87,8 @@ static QJsonObject filterToJson(Mlt::Service &service)
     obj.insert(QStringLiteral("name"),
                QString::fromUtf8(kdenliveId ? kdenliveId : (svc ? svc : "")));
     obj.insert(QStringLiteral("disabled"), service.get_int("disable") ? true : false);
-    obj.insert(QStringLiteral("in"), service.get_in());
-    obj.insert(QStringLiteral("out"), service.get_out());
+    obj.insert(QStringLiteral("in"), service.get_int("in"));
+    obj.insert(QStringLiteral("out"), service.get_int("out"));
     QJsonObject params;
     for (int i = 0; i < service.count(); ++i) {
         const char *name = service.get_name(i);

@@ -25,6 +25,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QUndoStack>
 
 namespace Agent {
 
