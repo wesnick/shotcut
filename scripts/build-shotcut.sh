@@ -1389,7 +1389,6 @@ function get_subproject {
 
               feedback_status "Pulling git sources for $1"
               cmd git reset --hard || die "Unable to reset git tree for $1"
-              cmd git clean -fdx || die "Unable to clean git tree for $1"
               # Resolve the remote's default branch instead of guessing per-repo
               MAIN_GIT_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
               if [ -z "$MAIN_GIT_BRANCH" ]; then
