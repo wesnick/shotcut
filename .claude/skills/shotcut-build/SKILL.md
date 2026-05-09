@@ -53,6 +53,13 @@ because Docker runs as root. You generally cannot delete or edit them from
 the host as `wes`. The build script handles this internally; just don't try
 to clean these dirs from the host without `sudo`.
 
+Running `git status` / `git log` against any of `scripts/src/<lib>/` from
+the host fails with `fatal: detected dubious ownership in repository`. **Do
+not** add these to `git config --global safe.directory` — that bloats global
+config with one entry per dep and isn't needed for the build. If you want
+to inspect a sub-clone's state, do it inside the container:
+`docker run --rm -v "$PWD/scripts:/root/shotcut" <image> -c 'cd /root/shotcut/src/<lib> && git log -3'`.
+
 ## Monitoring
 
 Don't `tail -f` synchronously — the build is long. Use the Monitor tool with
