@@ -123,6 +123,7 @@ public:
     Agent::AgentServer *agentServer() const { return m_agentServer; }
     void startAgentServer(int portOverride = -1);
     void stopAgentServer();
+    void setCurrentFile(const QString &filename);
 #endif
 
 signals:
@@ -168,7 +169,9 @@ private:
     void readWindowSettings();
     void writeSettings();
     void configureVideoWidget();
+#ifndef SHOTCUT_ENABLE_AGENT_SERVER
     void setCurrentFile(const QString &filename);
+#endif
     void updateWindowTitle();
     void changeAudioChannels(bool checked, int channels);
     void changeDeinterlacer(bool checked, const char *method);

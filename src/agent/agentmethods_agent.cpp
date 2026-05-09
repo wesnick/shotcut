@@ -98,11 +98,12 @@ static QJsonValue handlePing(const QJsonValue &params, AgentSession *session)
 static QJsonValue handleListMethods(const QJsonValue &params, AgentSession *session)
 {
     Q_UNUSED(params);
-    Q_UNUSED(session);
     QJsonArray methods;
-    // We don't have a reverse pointer to the dispatcher here; the session has
-    // it, but exposing it is more coupling than worthwhile. Instead, the
-    // capabilities array in agent.hello is the contract.
+    if (session && session->dispatcher()) {
+        const auto names = session->dispatcher()->methodNames();
+        for (const auto &n : names)
+            methods.append(n);
+    }
     return methods;
 }
 

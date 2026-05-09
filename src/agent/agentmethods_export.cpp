@@ -53,16 +53,14 @@ static QJsonValue exportStart(const QJsonValue &params, AgentSession *)
     const auto path = obj.value(QStringLiteral("path")).toString();
     if (path.isEmpty())
         throw MethodException(Errors::kInvalidParams, QStringLiteral("path is required"));
-    if (!dock->encodeForAgent(path))
+    const int jobId = dock->encodeForAgent(path);
+    if (jobId < 0)
         throw MethodException(Errors::kBusy,
-                              QStringLiteral("export rejected (already in progress?)"));
+                              QStringLiteral("export rejected (no timeline, busy, "
+                                             "or target write failed)"));
     QJsonObject result;
     result.insert(QStringLiteral("ok"), true);
-    // Job ID: by convention the most recently added job. The caller can poll
-    // export.jobStatus to track it.
-    const auto jobs = JOBS.jobs();
-    if (!jobs.isEmpty())
-        result.insert(QStringLiteral("jobId"), int(jobs.size()) - 1);
+    result.insert(QStringLiteral("jobId"), jobId);
     return result;
 }
 

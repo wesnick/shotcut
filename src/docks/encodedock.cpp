@@ -3093,14 +3093,41 @@ void EncodeDock::checkFrameRate()
 }
 
 #ifdef SHOTCUT_ENABLE_AGENT_SERVER
-bool EncodeDock::encodeForAgent(const QString &target)
+int EncodeDock::encodeForAgent(const QString &target)
 {
     if (target.isEmpty())
-        return false;
+        return -1;
     if (isExportInProgress())
-        return false;
-    encode(target);
-    return true;
+        return -1;
+    if (!MAIN.isMultitrackValid())
+        return -1;
+    if (JOBS.targetIsInProgress(target))
+        return -1;
+
+    // Always export the full timeline for agent-driven exports — the EncodeDock's
+    // fromCombo selection is GUI-only state the agent client cannot inspect or
+    // change. createMeltJob honours fromCombo for some flags (clip-only filter
+    // adjustments, marker-range), so we temporarily force "timeline" and restore.
+    int savedFromIndex = ui->fromCombo->currentIndex();
+    int timelineIndex = ui->fromCombo->findData(QStringLiteral("timeline"));
+    if (timelineIndex >= 0 && timelineIndex != savedFromIndex)
+        ui->fromCombo->setCurrentIndex(timelineIndex);
+
+    Mlt::Producer *producer = MAIN.multitrack();
+    int realtime = Settings.playerGPU() ? -1 : -QThread::idealThreadCount();
+    MeltJob *job = createMeltJob(producer, target, realtime, /*pass=*/0);
+
+    if (timelineIndex >= 0 && timelineIndex != savedFromIndex)
+        ui->fromCombo->setCurrentIndex(savedFromIndex);
+
+    if (!job)
+        return -1;
+
+    JOBS.add(job);
+    // Index into the JobQueue's ordered list — by convention the most-recently-
+    // added job is at size()-1. The agent returns this as `jobId` so callers can
+    // poll export.jobStatus.
+    return JOBS.jobs().size() - 1;
 }
 
 QStringList EncodeDock::agentPresetNames() const

@@ -47,6 +47,7 @@ public:
 
     QHostAddress peerAddress() const;
     QWebSocket *socket() const { return m_socket; }
+    const Dispatcher *dispatcher() const { return m_dispatcher; }
 
     // After construction the server calls finalizeAuth() with the token policy
     // resolved. We capture it so per-message validation is consistent.

@@ -384,6 +384,71 @@ static QJsonValue timelineSelect(const QJsonValue &params, AgentSession *)
     return result;
 }
 
+static QJsonValue timelineAddTransition(const QJsonValue &params, AgentSession *)
+{
+    auto *model = requireModel();
+    auto *dock = MAIN.timelineDock();
+    if (!dock)
+        throw MethodException(Errors::kNoProjectOpen, QStringLiteral("timeline not available"));
+
+    const auto obj = paramsObj(params);
+    if (!obj.contains(QStringLiteral("trackIndex")))
+        throw MethodException(Errors::kInvalidParams, QStringLiteral("trackIndex is required"));
+    if (!obj.contains(QStringLiteral("clipIndex")))
+        throw MethodException(Errors::kInvalidParams, QStringLiteral("clipIndex is required"));
+    if (!obj.contains(QStringLiteral("overlapFrames")))
+        throw MethodException(Errors::kInvalidParams,
+                              QStringLiteral("overlapFrames is required"));
+
+    const int trackIndex = requireTrackIndex(model,
+                                             obj.value(QStringLiteral("trackIndex")).toInt(-1));
+    const int clipIndex = obj.value(QStringLiteral("clipIndex")).toInt(-1);
+    const int overlap = obj.value(QStringLiteral("overlapFrames")).toInt(0);
+    const bool ripple = obj.value(QStringLiteral("ripple")).toBool(false);
+
+    if (overlap <= 0)
+        throw MethodException(Errors::kInvalidArgument,
+                              QStringLiteral("overlapFrames must be > 0"));
+
+    // The transition merges clipIndex with its left neighbour, so clipIndex must
+    // be >= 1. clipIndex itself must be a real (non-blank) clip; the predecessor
+    // must also be a real clip — addTransitionValid checks this.
+    const auto &t = model->trackList().at(trackIndex);
+    Mlt::Producer *track = model->tractor()->track(t.mlt_index);
+    if (!track || !track->is_valid()) {
+        delete track;
+        throw MethodException(Errors::kFailed, QStringLiteral("could not access track"));
+    }
+    Mlt::Playlist playlist(*track);
+    delete track;
+
+    if (clipIndex < 1 || clipIndex >= playlist.count())
+        throw MethodException(Errors::kOutOfBounds,
+                              QStringLiteral("clipIndex out of bounds: %1").arg(clipIndex));
+
+    const int currentStart = playlist.clip_start(clipIndex);
+    const int targetPosition = currentStart - overlap;
+    if (targetPosition < 0)
+        throw MethodException(Errors::kInvalidArgument,
+                              QStringLiteral("overlap exceeds clip start position"));
+
+    if (!model->addTransitionValid(trackIndex, trackIndex, clipIndex, targetPosition, ripple))
+        throw MethodException(Errors::kInvalidArgument,
+                              QStringLiteral("transition not valid at this boundary "
+                                             "(check that both neighbours are real clips and "
+                                             "overlap fits within their durations)"));
+
+    auto *cmd = new Timeline::AddTransitionCommand(*dock, trackIndex, clipIndex,
+                                                   targetPosition, ripple);
+    MAIN.undoStack()->push(cmd);
+
+    QJsonObject result;
+    result.insert(QStringLiteral("ok"), true);
+    result.insert(QStringLiteral("transitionClipIndex"), cmd->getTransitionIndex());
+    result.insert(QStringLiteral("trackIndex"), trackIndex);
+    return result;
+}
+
 void registerTimelineMethods(Dispatcher &d)
 {
     d.registerMethod(QStringLiteral("timeline.tracks"), timelineTracks);
@@ -400,6 +465,7 @@ void registerTimelineMethods(Dispatcher &d)
     d.registerMethod(QStringLiteral("timeline.removeTrack"), timelineRemoveTrack);
     d.registerMethod(QStringLiteral("timeline.setTrackProperty"), timelineSetTrackProperty);
     d.registerMethod(QStringLiteral("timeline.select"), timelineSelect);
+    d.registerMethod(QStringLiteral("timeline.addTransition"), timelineAddTransition);
 }
 
 } // namespace Agent

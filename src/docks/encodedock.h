@@ -59,9 +59,12 @@ public:
 
 #ifdef SHOTCUT_ENABLE_AGENT_SERVER
     // Trigger an export to `target` using the dock's currently-loaded preset.
-    // Used by the agent server's export.start RPC. Returns true if the job
-    // was enqueued. Must be called from the GUI thread.
-    bool encodeForAgent(const QString &target);
+    // Used by the agent server's export.start RPC. Returns the JobQueue index
+    // of the enqueued MeltJob on success, or -1 on failure. Must be called
+    // from the GUI thread. The job runs as an out-of-process `melt` invocation
+    // so the output file is properly finalized (moov atom written) when the
+    // subprocess exits.
+    int encodeForAgent(const QString &target);
     // Names of stock encode preset paths (e.g. "consumer/avformat/H.264 Main Profile").
     QStringList agentPresetNames() const;
 #endif

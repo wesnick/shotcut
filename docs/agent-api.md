@@ -128,11 +128,24 @@ Returns:
 
 ```json
 {"method":"project.open","params":{"path":"/abs/path/to/file.mlt"}}
+{"method":"project.open","params":{"path":"…","discardChanges":true}}
 ```
 
-The user-visible "save unsaved changes" dialog is **not** suppressed: the
-call returns `{"ok":true,"queued":true}` and the actual open is triggered
-on the GUI thread, where the existing menu code path (and dialogs) run.
+Runs synchronously on the GUI thread. Returns `{"ok":true,"file":"<currentFileName>"}`
+once the load completes. If the project is dirty and `discardChanges`
+(alias `force`) is **not** set, MainWindow puts up a modal "Save unsaved
+changes?" dialog and the call blocks until the user answers — so for
+unattended scripts pass `discardChanges:true`.
+
+### `project.discardChanges`
+
+```json
+{"method":"project.discardChanges"}
+```
+
+Drops the dirty flag and clears the undo stack without saving. After this,
+a subsequent `project.open` or `project.new` will not surface the modal
+"Save changes?" dialog.
 
 ### `project.save`
 
@@ -141,13 +154,16 @@ on the GUI thread, where the existing menu code path (and dialogs) run.
 ```
 
 If `path` is omitted the current file is overwritten (matches **File →
-Save**). If the project has never been saved, returns `-32005 Failed` —
-use the GUI's Save As… or supply `path`.
+Save**). If a `path` is given, behaves like Save As: writes the XML,
+updates the current-file pointer, clears the dirty flag, and clears the
+undo stack. Returns `{"ok":true,"file":"<path>"}`. Returns `-32005 Failed`
+if the write itself fails.
 
 ### `project.new`, `project.close`
 
 Trigger the same actions as the menu items; both queue onto the GUI thread
-because they may need to prompt the user.
+because they may need to prompt the user. Pair with `project.discardChanges`
+beforehand if you want to skip the prompt.
 
 ### `project.getMltXml`
 
@@ -218,7 +234,30 @@ Splits the clip under the supplied position (or playhead). Returns
 ```
 
 Pushes a `MoveClipCommand` to the undo stack with computed `trackDelta`
-and `positionDelta`.
+and `positionDelta`. Note: this does **not** create a transition when
+the moved clip overlaps its predecessor — it inserts a blank gap and
+trims the predecessor. Use `timeline.addTransition` for cross-fades.
+
+### `timeline.addTransition`
+
+```json
+{"params":{"trackIndex":0,"clipIndex":2,"overlapFrames":25,"ripple":false}}
+```
+
+Creates a Shotcut dissolve (luma video + cross-fade audio) between
+`clip[clipIndex - 1]` and `clip[clipIndex]` on the track. The overlap
+is in frames at the project profile fps. Both clips must be real
+(non-blank); the predecessor is shortened by `overlapFrames` to make
+room for the mix.
+
+Returns `{"ok":true,"transitionClipIndex":<int>,"trackIndex":<int>}`.
+The transition shows up in `timeline.clips` as an entry with the name
+`"<tractor>"` between the trimmed predecessor and successor.
+
+Backed by `Timeline::AddTransitionCommand` — fully undoable via
+`agent.undo`. Returns `-32003` if the boundary isn't a valid spot for
+a transition (usually means a neighbour is blank or `overlapFrames`
+exceeds the available material).
 
 ### `timeline.trimClipIn` / `timeline.trimClipOut`
 
@@ -274,7 +313,11 @@ Multiple clips:
 * `export.presets` → list of `consumer/avformat/...` preset names.
 * `export.start { path }` — starts an encode using the EncodeDock's
   **currently-loaded preset**. The agent does not pick the preset for v1;
-  configure the dock first via the UI. Returns `{ok:true, jobId:N}`.
+  configure the dock first via the UI. Returns `{ok:true, jobId:N}`. The
+  encode runs as an out-of-process `melt` subprocess (via the same
+  `JobQueue` the GUI uses), so the resulting file is properly finalized
+  on completion. Errors with `-32004 Busy` if another export is in
+  progress, the timeline is empty, or the target write isn't permitted.
 * `export.jobStatus { jobId }` → `{label, ran, paused, stopped, isFinished, target}`.
 
 ### `agent.listMethods` *(diagnostic)*

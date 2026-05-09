@@ -81,13 +81,41 @@ static QJsonValue projectOpen(const QJsonValue &params, AgentSession *)
         throw MethodException(Errors::kInvalidArgument,
                               QStringLiteral("file not found: %1").arg(path));
 
-    // Run on the GUI thread; use a queued single-shot so we return immediately
-    // and the user-visible "save unsaved changes" dialog is allowed to surface.
-    QTimer::singleShot(0, &MAIN, [path]() { MAIN.open(path); });
+    // Accept either spelling; "force" is older agent-script idiom, "discardChanges" is clearer.
+    const bool discardChanges = obj.value(QStringLiteral("discardChanges")).toBool(false)
+                                || obj.value(QStringLiteral("force")).toBool(false);
+
+    if (discardChanges) {
+        // Bypass MainWindow::continueModified() — without these resets it puts up a
+        // modal "Save unsaved changes?" dialog that the agent client can't dismiss,
+        // and MAIN.open silently returns with no project actually loaded.
+        MAIN.setWindowModified(false);
+        if (auto *stack = MAIN.undoStack())
+            stack->setClean();
+    }
+
+    // Synchronous on the GUI thread. The dispatcher already runs here, so a
+    // direct call blocks just this one request — other sessions' requests are
+    // serialized as usual. If discardChanges is false and the project is dirty,
+    // MAIN.open will still surface the dialog and this call will block until the
+    // user dismisses it (or the agent is disconnected).
+    MAIN.open(path);
 
     QJsonObject result;
     result.insert(QStringLiteral("ok"), true);
-    result.insert(QStringLiteral("queued"), true);
+    result.insert(QStringLiteral("file"), MAIN.fileName());
+    return result;
+}
+
+static QJsonValue projectDiscardChanges(const QJsonValue &, AgentSession *)
+{
+    // Explicit gesture: drop the dirty flag and clear the undo stack so the next
+    // project.open / project.new doesn't surface a "Save changes?" dialog.
+    MAIN.setWindowModified(false);
+    if (auto *stack = MAIN.undoStack())
+        stack->setClean();
+    QJsonObject result;
+    result.insert(QStringLiteral("ok"), true);
     return result;
 }
 
@@ -97,7 +125,19 @@ static QJsonValue projectSave(const QJsonValue &params, AgentSession *)
     const auto path = obj.value(QStringLiteral("path")).toString();
     bool ok = false;
     if (!path.isEmpty()) {
+        // Save-As semantics: write XML, then update the current-file pointer
+        // and clear dirty so subsequent project.open calls don't trip the
+        // "Save changes?" modal. MainWindow::newProject does the same set of
+        // bookkeeping but also pops a QMessageBox on failure, which is
+        // unsuitable for the agent path — so we open-code the post-save
+        // updates and return a JSON-RPC error on failure instead.
         ok = MAIN.saveXML(path);
+        if (ok) {
+            MAIN.setCurrentFile(path);
+            MAIN.setWindowModified(false);
+            if (auto *stack = MAIN.undoStack())
+                stack->setClean();
+        }
     } else {
         ok = MAIN.on_actionSave_triggered();
     }
@@ -105,6 +145,7 @@ static QJsonValue projectSave(const QJsonValue &params, AgentSession *)
         throw MethodException(Errors::kFailed, QStringLiteral("save failed"));
     QJsonObject result;
     result.insert(QStringLiteral("ok"), true);
+    result.insert(QStringLiteral("file"), MAIN.fileName());
     return result;
 }
 
@@ -146,6 +187,7 @@ void registerProjectMethods(Dispatcher &d)
     d.registerMethod(QStringLiteral("project.save"), projectSave);
     d.registerMethod(QStringLiteral("project.close"), projectClose);
     d.registerMethod(QStringLiteral("project.new"), projectNew);
+    d.registerMethod(QStringLiteral("project.discardChanges"), projectDiscardChanges);
     d.registerMethod(QStringLiteral("project.getMltXml"), projectGetMltXml);
 }
 
