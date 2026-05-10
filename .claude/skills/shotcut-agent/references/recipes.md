@@ -4,9 +4,13 @@ Short snippets the agent can adapt. All assume the import boilerplate:
 
 ```python
 import sys
-sys.path.insert(0, ".claude/skills/shotcut-agent")
+sys.path.insert(0, ".claude/skills/shotcut-agent/scripts")
 from shotcut_agent import Shotcut, ShotcutError, NO_PROJECT_OPEN, UNSUPPORTED
 ```
+
+(Or skip the boilerplate entirely by running these snippets via
+`uv run .claude/skills/shotcut-agent/scripts/shotcut_agent.py`, which
+pre-binds `Shotcut` and an open `sc` for you.)
 
 ## Inspect the project deeply
 
@@ -32,6 +36,38 @@ with Shotcut() as sc:
     last = clips[-1]
     sc.player.seek(last["start"] + last["duration"] // 2)
     sc.player.snapshot_to("/tmp/midpoint.jpg", width=480)
+```
+
+## Add cross-fade transitions between adjacent clips
+
+```python
+with Shotcut() as sc:
+    fps = sc.project.state()["profile"]["fps"]
+    overlap = int(round(1.0 * fps))  # 1-second dissolve
+
+    # Walk back-to-front because each addTransition re-indexes the
+    # boundary as a tractor entry, shifting later clips down by one.
+    boundaries = []
+    clips = sc.timeline.clips(0)
+    for i in range(1, len(clips)):
+        prev, cur = clips[i - 1], clips[i]
+        if not prev["isBlank"] and not cur["isBlank"]:
+            boundaries.append(i)
+
+    for clip_index in reversed(boundaries):
+        sc.timeline.add_transition(track=0, clip=clip_index, overlap=overlap)
+```
+
+## Reset to a clean project, even if there are unsaved edits
+
+```python
+with Shotcut() as sc:
+    # discard_changes=True dismisses the "Save changes?" modal that
+    # would otherwise block project.open silently.
+    sc.project.open(
+        ".claude/skills/shotcut-agent/assets/empty.mlt",
+        discard_changes=True,
+    )
 ```
 
 ## Trim the head of every clip on V1 by N frames

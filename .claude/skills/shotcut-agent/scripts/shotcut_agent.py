@@ -1,3 +1,9 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "websockets>=12",
+# ]
+# ///
 """Synchronous Python client for the Shotcut agent server.
 
 A thin, ergonomic wrapper around the JSON-RPC over WebSocket interface
@@ -5,7 +11,7 @@ described in docs/agent-api.md. Designed for agent scripts that just
 want to drive Shotcut without thinking about asyncio, framing, auth,
 or correlation IDs.
 
-Usage:
+Usage as a library:
 
     from shotcut_agent import Shotcut
 
@@ -15,11 +21,29 @@ Usage:
         sc.timeline.append_clip(track=0, path="/abs/clip.mp4")
         sc.undo()
 
+Usage as a runnable script (PEP 723 — uv installs websockets on demand):
+
+    uv run .claude/skills/shotcut-agent/scripts/shotcut_agent.py \
+        -c 'print(sc.hello())'
+
+    uv run .claude/skills/shotcut-agent/scripts/shotcut_agent.py <<'PY'
+        print(sc.project.state())
+        for t in sc.timeline.tracks():
+            print(t["name"], len(sc.timeline.clips(t["index"])))
+    PY
+
+In script mode, `Shotcut` and an already-opened `sc` are pre-bound in
+the snippet's globals; the connection is closed after the snippet runs.
+Pass --no-connect to skip the auto-open (useful when you want to test
+connection failures or pass a custom URL inside the snippet).
+
 Connection defaults:
     url   ws://127.0.0.1:5555/   (override with SHOTCUT_AGENT_URL)
     token $SHOTCUT_AGENT_TOKEN if set, else none
 
-Requires `websockets>=12` (for the sync API). Install with:
+Requires `websockets>=12` (for the sync API). With uv (recommended):
+    uv run path/to/shotcut_agent.py ...    # auto-installs into a transient venv
+Or manually:
     pip install 'websockets>=12'
 
 This module is dependency-light on purpose — it calls into one external
@@ -248,8 +272,11 @@ class _ProjectNS(_Namespace):
     def state(self) -> dict:
         return self._sc.call("project.state")
 
-    def open(self, path: str) -> dict:
-        return self._sc.call("project.open", {"path": path})
+    def open(self, path: str, *, discard_changes: bool = False) -> dict:
+        params: dict[str, Any] = {"path": path}
+        if discard_changes:
+            params["discardChanges"] = True
+        return self._sc.call("project.open", params)
 
     def save(self, path: Optional[str] = None) -> dict:
         params = {"path": path} if path else None
@@ -260,6 +287,10 @@ class _ProjectNS(_Namespace):
 
     def new(self) -> dict:
         return self._sc.call("project.new")
+
+    def discard_changes(self) -> dict:
+        """Drop the dirty flag without saving — lets the next open/new bypass the modal prompt."""
+        return self._sc.call("project.discardChanges")
 
     def get_mlt_xml(self) -> str:
         return self._sc.call("project.getMltXml")["xml"]
@@ -367,6 +398,20 @@ class _TimelineNS(_Namespace):
         return self._sc.call(
             "timeline.trimClipOut",
             {"track": track, "clip": clip, "delta": delta},
+        )
+
+    def add_transition(self, *, track: int, clip: int, overlap: int,
+                       ripple: bool = False) -> dict:
+        """Create a Shotcut dissolve transition between clip[clip-1] and clip[clip].
+
+        `overlap` is in frames at the project profile fps. `clip` must point
+        to the SECOND of the pair; both neighbours must be real (non-blank)
+        clips. Pushes onto the same undo stack as the GUI — sc.undo() reverses it.
+        """
+        return self._sc.call(
+            "timeline.addTransition",
+            {"trackIndex": track, "clipIndex": clip,
+             "overlapFrames": overlap, "ripple": ripple},
         )
 
     def add_track(self, type_: str = "video") -> dict:
@@ -479,3 +524,44 @@ class _ExportNS(_Namespace):
             if deadline is not None and time.monotonic() > deadline:
                 raise TimeoutError(f"job {job_id} did not finish within {timeout}s")
             time.sleep(poll)
+
+
+def _run_snippet() -> None:
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(
+        prog="shotcut_agent.py",
+        description="Run a Python snippet with a live Shotcut() session in scope.",
+    )
+    parser.add_argument("-c", "--code", help="Snippet to execute. If omitted, read from stdin.")
+    parser.add_argument("--url", help="WebSocket URL (default: $SHOTCUT_AGENT_URL or ws://127.0.0.1:5555/).")
+    parser.add_argument("--token", help="Bearer token (default: $SHOTCUT_AGENT_TOKEN).")
+    parser.add_argument(
+        "--no-connect", action="store_true",
+        help="Don't auto-open a Shotcut() — only inject the class into the snippet.",
+    )
+    args = parser.parse_args()
+
+    code = args.code if args.code is not None else sys.stdin.read()
+    if not code.strip():
+        parser.error("no code provided (pass -c or pipe via stdin)")
+
+    g: dict[str, Any] = {"__name__": "__main__", "Shotcut": Shotcut, "ShotcutError": ShotcutError}
+
+    if args.no_connect:
+        exec(compile(code, "<snippet>", "exec"), g)
+        return
+
+    kwargs = {}
+    if args.url:
+        kwargs["url"] = args.url
+    if args.token:
+        kwargs["token"] = args.token
+    with Shotcut(**kwargs) as sc:
+        g["sc"] = sc
+        exec(compile(code, "<snippet>", "exec"), g)
+
+
+if __name__ == "__main__":
+    _run_snippet()
