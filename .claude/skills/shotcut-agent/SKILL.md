@@ -158,6 +158,41 @@ Without one of these, plan to **save first** with `sc.project.save(path)`
 which now correctly clears the dirty flag and updates the current-file
 pointer.
 
+### Autosave-recovery dialog also blocks `project.open` (Issue 7)
+
+`discard_changes=True` bypasses the *Save changes?* modal but **not**
+the *Auto-saved files exist. Do you want to recover them now?* modal.
+That dialog appears whenever
+`~/.local/share/Meltytech/Shotcut/autosave/<md5(abs_path)>.mlt` exists
+for the target file, and like the save-changes modal it blocks the
+agent's `project.open` call silently — the client just waits, then
+times out on the keepalive.
+
+The agent client can't dismiss the dialog. Options:
+
+* Ask the user to click *No* on the dialog, then retry the open.
+* Delete the stale autosave hash file before opening:
+
+  ```python
+  import hashlib, os
+  hash_path = os.path.expanduser(
+      "~/.local/share/Meltytech/Shotcut/autosave/"
+      + hashlib.md5(b"/abs/path/to/file.mlt").hexdigest() + ".mlt"
+  )
+  if os.path.exists(hash_path):
+      os.remove(hash_path)
+  sc.project.open("/abs/path/to/file.mlt", discard_changes=True)
+  ```
+
+* Restart Shotcut with the project file as a CLI argument
+  (`shotcut --agent-server=5555 /abs/path/to/file.mlt`) — the
+  autosave-recovery prompt still fires but it only appears once at
+  launch, before any agent client connects.
+
+Fix tracked as Issue 7 in `FINDINGS.md` — when patched, the
+`project.open` handler will delete the stale entry itself when
+`discard_changes=True`.
+
 ### `state.file` is not a reliable "load succeeded" signal
 
 For projects that have never been saved (the bundled `empty.mlt`
@@ -207,7 +242,124 @@ If you need to react to seek, poll `sc.player.state()` instead.
 `sc.filter.list(...)` and `sc.filter.metadata(service)` work. Adding,
 removing, or parameter-editing filters returns `-32006 Unsupported`
 (see `docs/agent-api.md` for why). If you need to apply a filter, ask
-the user to do it in the UI; you can read it back after.
+the user to do it in the UI; **or** ship the filter inside a hand-
+rolled producer XML via `timeline.appendClip(mltXml=...)` (see next
+section).
+
+## Custom producers (timewarp, with-filter) via mltXml
+
+`timeline.appendClip` / `insertClip` / `overwriteClip` accept a raw
+`mltXml=` parameter instead of `path=`. The XML is treated as a self-
+contained MLT producer (or chain) and appended to the track exactly
+like a UI drag-in. This is the official escape hatch for everything
+the typed RPCs don't cover:
+
+* clips at a non-1.0 speed (`mlt_service="timewarp"`),
+* clips with filters already attached (`dynamictext`, `affine`, etc.),
+* virtual producers (`color`, `noise`, `pango`),
+* multi-clip tractors for hand-rolled transitions.
+
+Minimum shape:
+
+```python
+warp_xml = f"""<?xml version="1.0" encoding="utf-8"?>
+<mlt LC_NUMERIC="C" version="7.39.0">
+  <producer id="w" in="00:00:00.000" out="00:00:17.720">
+    <property name="length">00:00:17.760</property>
+    <property name="resource">10.0:/abs/path/to/source.mkv</property>
+    <property name="warp_speed">10.0</property>
+    <property name="warp_resource">/abs/path/to/source.mkv</property>
+    <property name="warp_pitch">1</property>
+    <property name="mlt_service">timewarp</property>
+    <filter id="f">
+      <property name="mlt_service">dynamictext</property>
+      <property name="argument">10x  &gt;&gt;  #timecode#</property>
+      <property name="geometry">0% 88%:100%x10%</property>
+      <property name="size">56</property>
+      <property name="fgcolour">#ffffffff</property>
+      <property name="bgcolour">#b8000000</property>
+      <property name="halign">center</property>
+      <property name="valign">middle</property>
+    </filter>
+  </producer>
+</mlt>"""
+sc.timeline.append_clip(track=0, mlt_xml=warp_xml)
+```
+
+The library param is `mlt_xml=` (snake_case); the JSON-RPC field is
+`mltXml`. Both `appendClip` and `insertClip` accept it.
+
+### ★ Timewarp resource format ★ — silent footgun
+
+MLT's timewarp producer parses speed via `atof()` on the resource
+string. **Two formats coexist in the wild and only one works** when
+the project is loaded from XML:
+
+| Format                             | Source           | What MLT actually does    |
+|------------------------------------|------------------|---------------------------|
+| `<speed>:<abs_path>` (e.g. `10.0:/x.mkv`) | What MLT expects | speed = 10.0 ✓            |
+| `timewarp:<speed>:<abs_path>`      | What Shotcut's own writer emits via `util.cpp` | atof sees "t" → returns 0 → **speed silently falls back to 1.0** ✗ |
+
+The Shotcut-style form is *visible* in saved projects but it's a
+roundtrip bug — `mlt_xml_prefix_size` in `modules/xml/common.c` only
+recognises a numeric prefix, and `producer_loader.c::create_producer`
+splits at the first colon, so the timewarp factory ends up with
+`arg = "timewarp:10.0:/path"` where `atof()` returns 0 → speed
+defaults to 1.0. The clip then plays the source at **1× speed**,
+clipped to the entry's in/out window — visually indistinguishable
+from a "skip" of unrelated source content. Worth pushing a fix to
+Shotcut's writer; in the meantime, when generating MLT XML by hand
+**always use `<speed>:<path>`**.
+
+Two other gotchas with timewarp clips:
+
+* The `<producer>` length is `source_duration / speed`, not source
+  duration. Each `<entry producer="warp" in=A out=B>` specifies in/out
+  in the **warped** timeline. So to play source seconds `[s0, s1)` at
+  10×, write `in=s0/10, out=s1/10` on the entry.
+* The clip's *displayed* `resource` string after load will be
+  `<project_dir>/<speed>:<path>` because MLT's XML qualifier prepends
+  the project root to anything that doesn't look absolute. This is a
+  display artifact — `warp_resource` retains the real path and
+  playback is correct.
+
+### Shared producer pattern
+
+When emitting many clips that all reference the same source, write
+**one `<producer>` per unique resource** and many `<entry>` items
+pointing at slices of it. That's what Shotcut itself does on save —
+it keeps the XML small and lets you attach a single filter chain
+that fires for every `<entry>`. Useful for, e.g., a single 10× warp
+producer that drives a dozen sped-up silent-gap entries with one
+shared `dynamictext` overlay.
+
+### dynamictext keywords
+
+`mlt_service="dynamictext"` accepts these substitution tokens inside
+the `argument` property (from `modules/plus/filter_dynamictext.c`):
+
+```
+#timecode#       SMPTE drop-frame timecode of the current frame
+#smpte_ndf#      same, non-drop-frame
+#frame#          frame number
+#filedate#       producer file mtime (GMT)
+#localfiledate#  producer file mtime (local TZ)
+#localtime#      wall-clock time now
+#createdate#     guessed file creation date
+#resource#       producer resource string
+```
+
+Any property name is also valid — e.g. `#meta.media.0.codec.frame_rate#`.
+A delimiter + strftime spec customises time formatting:
+`#localtime %I:%M %p#`. The `#` is escaped with `\`.
+
+`#timecode#` on a timewarp producer ticks at wall-clock framerate
+(1s per real second), making it an effective visual cue that
+playback is progressing during sped-up static screens — without it,
+a 10× clip over a static screen looks like a frozen frame.
+
+See `references/recipes.md` for a full "speed up silent gaps with a
+text indicator" recipe that ties this together.
 
 ## Transitions
 
